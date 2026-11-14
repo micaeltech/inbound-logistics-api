@@ -1,38 +1,57 @@
-# Business Rules & Domain Model — Inbound Logistics TMS
+# Business Rules & Domain Specification — Inbound Logistics TMS
 
-This document outlines the core domain actors, operational constraints, and domain entities governing the inbound logistics and freight transport management system.
+## 1. Domain Overview
 
----
-
-## 1. Domain Actors
-
-* **Supplier (Remetente / Fornecedor):** Origin entity responsible for manufacturing or storing goods, generating commercial invoices, and releasing cargo for scheduled pickups.
-* **Carrier (Transportadora):** Logistics provider operating a fleet of vehicles and drivers. Responsible for executing the physical transport from Suppliers to Distribution Centers.
-* **Distribution Center (Destinatário / CD):** Central warehouse receiving, inspecting, and unloading inbound freight. Manages dock scheduling and warehouse inventory intake.
-* **System Operator / Admin:** Internal user managing carrier contracts, overrides, system audits, and exception flows.
+The system manages the food and goods supply chain transport from origin (Producers / Industries) to destination (Large Retail Distribution Centers). The application controls participant registration, vehicle fleet, maintenance logs, route planning, and the freight order lifecycle.
 
 ---
 
-## 2. Core Entities & Attributes
+## 2. Main Entities and Actors
 
-1. **Freight (Carga / Ordem de Transporte):**
-   * Unique identifier (`id`, UUIDv4)
-   * Invoice reference number (`invoice_key`)
-   * Weight (`gross_weight_kg`), Volume (`volume_m3`), and Declared Value (`declared_value`)
-   * Origin Supplier ID & Destination DC ID
-   * Assigned Carrier ID and Vehicle/Driver allocation
+### 2.1 Origin Point (Supplier / Industry)
+* **2.1.1** Must have a unique identifier, Corporate Name (`Razão Social`), Tax ID (`CNPJ` - unique), State Registration (`Inscrição Estadual`), Contact Phone, and Full Address (Street, Number, Neighborhood, City, State, ZIP Code).
+* **2.1.2** An Origin Point is responsible for issuing the goods shipment request to a Distribution Center.
 
-2. **Vehicle (Veículo):**
-   * License plate (`plate`), model, maximum weight capacity (`max_weight_kg`), and volumetric limit (`max_volume_m3`).
-   * Current status (`AVAILABLE`, `IN_TRANSIT`, `MAINTENANCE`).
+### 2.2 Distribution Center (DC - Destination)
+* **2.2.1** Must have a unique identifier, Retail Chain Name (e.g., CD Assaí, CD Carrefour), Tax ID (`CNPJ` - unique), Daily Maximum Receiving Capacity (in tons or volume), and Full Address.
+* **2.2.2** The DC operates with specific time slots/windows to receive trucks (Unloading Dock).
 
-3. **Dock Schedule (Janela de Descarga):**
-   * Time slot reserved at the Distribution Center to prevent bottlenecks during cargo arrival.
+### 2.3 Driver
+* **2.3.1** Must have a unique identifier, Full Name, Individual Tax ID (`CPF` - unique), Driver's License Number (`CNH` - unique), License Category (e.g., `C`, `D`, `E`), and Operational Status (`AVAILABLE`, `IN_TRANSIT`, `INACTIVE`).
+* **2.3.2 Validation Rule:** A driver can only be allocated to a trip if their license category is compatible with the required truck type.
+* **2.3.3 Availability Rule:** A driver with status `IN_TRANSIT` or `INACTIVE` cannot accept new freight orders.
+
+### 2.4 Vehicle (Truck)
+* **2.4.1** Must have a License Plate (unique), Model, Brand, Year, Maximum Load Capacity (in kg/tons), Body Type (`REFRIGERATED`, `CLOSED_BOX`, `BULK_CARRIER`, `SIDER`), and Vehicle Status (`AVAILABLE`, `IN_TRANSIT`, `UNDER_MAINTENANCE`, `INACTIVE`).
+* **2.4.2 Maintenance Rule:** If the vehicle is flagged with status `UNDER_MAINTENANCE`, it automatically blocks any attempt to bind it to a new route or freight order.
+
+### 2.5 Maintenance / Repair Record
+* **2.5.1** Must have a unique identifier, Start Date, Estimated Completion Date, Actual Completion Date, Service Cost, Defect/Repair Description, and Maintenance Type (`PREVENTIVE` or `CORRECTIVE`).
+* **2.5.2 Vehicle Side Effect:** Upon opening a Maintenance Record with status `IN_PROGRESS`, the associated truck's status must be obligatorily updated to `UNDER_MAINTENANCE`.
+* **2.5.3** Upon completing the maintenance (`COMPLETED`), the truck's status returns to `AVAILABLE`.
 
 ---
 
-## 3. Key Business Constraints & Validations
+## 3. Cargo and Freight Order Rules
 
-1. **Capacity Enforcement:** A carrier vehicle cannot be allocated to a freight order if the cumulative gross weight or volume exceeds the vehicle's maximum limits (`sum(freight.weight) <= vehicle.max_weight`).
-2. **Mandatory Documentation:** A freight cannot transition to `DISPATCHED` without a valid tax invoice reference (`invoice_key`) and an assigned active driver.
-3. **Immutability:** Once a freight reaches `IN_TRANSIT`, origin and weight fields become strictly immutable to protect financial and fiscal audits.
+### 3.1 Cargo / Merchandise
+* **3.1.1** Must have a Description, Cargo Type (`PERISHABLE_REFRIGERATED`, `PERISHABLE_DRY`, `NON_PERISHABLE`), Total Weight (`kg`), and Declared Value (`BRL`).
+* **3.1.2 Refrigeration Compatibility Rule:** Cargo of type `PERISHABLE_REFRIGERATED` strictly requires that the associated vehicle has a `REFRIGERATED` body type.
+
+### 3.2 Freight Order (Transport Request)
+* **3.2.1** A Freight Order links: 1 Origin Point, 1 Distribution Center (Destination), 1 Cargo/Merchandise, and holds a Request Date.
+* **3.2.2** The Order follows a strict State Machine (Lifecycle):
+  * `REQUESTED` — Created by the Supplier, awaiting vehicle/driver allocation.
+  * `AWAITING_BOARDING` — Vehicle and driver allocated, awaiting departure from origin.
+  * `IN_TRANSIT` — Cargo in transport on the way to the DC.
+  * `DELIVERED` — Cargo received and inspected at the DC.
+  * `CANCELLED` — Cancellation requested prior to boarding.
+
+---
+
+## 4. Route, Allocation, and Trip Rules
+
+### 4.1 Route and Trip
+* **4.1.1** A Trip links: 1 Freight Order, 1 Truck, 1 Driver, Actual Departure Date/Time, and Estimated/Actual Arrival Date/Time.
+* **4.1.2 Weight Limit Rule (Capacity):** The Total Weight of the order's cargo cannot exceed the Maximum Load Capacity of the allocated truck (`cargo.totalWeight <= truck.maxLoadCapacity`).
+* **4.1.3 Allocation Uniqueness Rule:** 1 Truck can only be associated with 1 active Trip (`IN_TRANSIT` or `AWAITING_BOARDING`) at a time.
