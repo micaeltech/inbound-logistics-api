@@ -27,5 +27,5 @@ Centralized RESTful API (TMS) for managing supply chain operations and road frei
 ## Tech Stack
 
 - **Language & Framework:** Java 17, Spring Boot 3, Spring Data JPA, Spring Validation, Spring Security
-- **Database & Versioning:** PostgreSQL, Flyway Migrations
+- **Database & Versioning:** PostgreSQL, Flyway Migrations, Redis, MongoDB
 - **Infrastructure & Testing:** Docker, Docker Compose, JUnit 5, Mockito
